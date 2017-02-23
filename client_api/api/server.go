@@ -81,10 +81,10 @@ func publishRepo(r *client.NotaryRepository) error {
 }
 
 func initializeRepo(r *client.NotaryRepository) error {
-	rootKeyList := r.CryptoService.ListKeys(data.CanonicalRootRole)
+	rootKeyList := r.CryptoService().ListKeys(data.CanonicalRootRole)
 	var rootKeyID string
 	if len(rootKeyList) < 1 {
-		rootPublicKey, err := r.CryptoService.Create(data.CanonicalRootRole, "", data.ECDSAKey)
+		rootPublicKey, err := r.CryptoService().Create(data.CanonicalRootRole, "", data.ECDSAKey)
 		if err != nil {
 			return err
 		}

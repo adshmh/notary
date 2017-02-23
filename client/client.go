@@ -44,12 +44,12 @@ type NotaryRepository struct {
 	baseURL        string
 	tufRepoPath    string
 	cache          store.MetadataStore
-	CryptoService  signed.CryptoService
+	cryptoService  signed.CryptoService
 	tufRepo        *tuf.Repo
 	invalid        *tuf.Repo // known data that was parsable but deemed invalid
 	roundTrip      http.RoundTripper
 	trustPinning   trustpinning.TrustPinConfig
-	LegacyVersions int // number of versions back to fetch roots to sign with
+	legacyVersions int // number of versions back to fetch roots to sign with
 }
 
 // NewFileCachedNotaryRepository is a wrapper for NewNotaryRepository that initializes
@@ -98,10 +98,10 @@ func repositoryFromKeystores(baseDir string, gun data.GUN, baseURL string, rt ht
 		baseDir:        baseDir,
 		baseURL:        baseURL,
 		tufRepoPath:    filepath.Join(baseDir, tufDir, filepath.FromSlash(gun.String())),
-		CryptoService:  cryptoService,
+		cryptoService:  cryptoService,
 		roundTrip:      rt,
 		trustPinning:   trustPin,
-		LegacyVersions: 0, // By default, don't sign with legacy roles
+		legacyVersions: 0, // By default, don't sign with legacy roles
 	}
 
 	nRepo.cache = cache
@@ -165,7 +165,7 @@ func rootCertKey(gun data.GUN, privKey data.PrivateKey) (data.PublicKey, error) 
 func (r *NotaryRepository) Initialize(rootKeyIDs []string, serverManagedRoles ...data.RoleName) error {
 	privKeys := make([]data.PrivateKey, 0, len(rootKeyIDs))
 	for _, keyID := range rootKeyIDs {
-		privKey, _, err := r.CryptoService.GetPrivateKey(keyID)
+		privKey, _, err := r.cryptoService.GetPrivateKey(keyID)
 		if err != nil {
 			return err
 		}
@@ -217,7 +217,7 @@ func (r *NotaryRepository) Initialize(rootKeyIDs []string, serverManagedRoles ..
 		return err
 	}
 
-	r.tufRepo = tuf.NewRepo(r.CryptoService)
+	r.tufRepo = tuf.NewRepo(r.cryptoService)
 
 	if err := r.tufRepo.InitRoot(
 		rootRole,
@@ -255,7 +255,7 @@ func (r *NotaryRepository) initializeRoles(rootKeys []data.PublicKey, localRoles
 	for _, role := range localRoles {
 		// This is currently hardcoding the keys to ECDSA.
 		var key data.PublicKey
-		key, err = r.CryptoService.Create(role, r.gun, data.ECDSAKey)
+		key, err = r.cryptoService.Create(role, r.gun, data.ECDSAKey)
 		if err != nil {
 			return
 		}
@@ -646,7 +646,7 @@ func (r *NotaryRepository) publish(cl changelist.Changelist) error {
 	updatedFiles := make(map[data.RoleName][]byte)
 
 	// Fetch old keys to support old clients
-	legacyKeys, err := r.oldKeysForLegacyClientSupport(r.LegacyVersions, initialPublish)
+	legacyKeys, err := r.oldKeysForLegacyClientSupport(r.legacyVersions, initialPublish)
 	if err != nil {
 		return err
 	}
@@ -807,7 +807,7 @@ func signTargets(updates map[data.RoleName][]byte, repo *tuf.Repo, initialPublis
 // snapshots are supported, if the snapshot metadata fails to load, that's ok.
 // This assumes that bootstrapRepo is only used by Publish() or RotateKey()
 func (r *NotaryRepository) bootstrapRepo() error {
-	b := tuf.NewRepoBuilder(r.gun, r.CryptoService, r.trustPinning)
+	b := tuf.NewRepoBuilder(r.gun, r.cryptoService, r.trustPinning)
 
 	logrus.Debugf("Loading trusted collection.")
 
@@ -942,10 +942,10 @@ func (r *NotaryRepository) bootstrapClient(checkInitialized bool) (*TUFClient, e
 	minVersion := 1
 	// the old root on disk should not be validated against any trust pinning configuration
 	// because if we have an old root, it itself is the thing that pins trust
-	oldBuilder := tuf.NewRepoBuilder(r.gun, r.CryptoService, trustpinning.TrustPinConfig{})
+	oldBuilder := tuf.NewRepoBuilder(r.gun, r.cryptoService, trustpinning.TrustPinConfig{})
 
 	// by default, we want to use the trust pinning configuration on any new root that we download
-	newBuilder := tuf.NewRepoBuilder(r.gun, r.CryptoService, r.trustPinning)
+	newBuilder := tuf.NewRepoBuilder(r.gun, r.cryptoService, r.trustPinning)
 
 	// Try to read root from cache first. We will trust this root until we detect a problem
 	// during update which will cause us to download a new root and perform a rotation.
@@ -959,7 +959,7 @@ func (r *NotaryRepository) bootstrapClient(checkInitialized bool) (*TUFClient, e
 
 		// again, the root on disk is the source of trust pinning, so use an empty trust
 		// pinning configuration
-		newBuilder = tuf.NewRepoBuilder(r.gun, r.CryptoService, trustpinning.TrustPinConfig{})
+		newBuilder = tuf.NewRepoBuilder(r.gun, r.cryptoService, trustpinning.TrustPinConfig{})
 
 		if err := newBuilder.Load(data.CanonicalRootRole, rootJSON, minVersion, false); err != nil {
 			// Ok, the old root is expired - we want to download a new one.  But we want to use the
@@ -1049,7 +1049,7 @@ func (r *NotaryRepository) pubKeyListForRotation(role data.RoleName, serverManag
 	// If no new keys are passed in, we generate one
 	if len(newKeys) == 0 {
 		pubKeyList = make(data.KeyList, 0, 1)
-		pubKey, err = r.CryptoService.Create(role, r.gun, data.ECDSAKey)
+		pubKey, err = r.cryptoService.Create(role, r.gun, data.ECDSAKey)
 		pubKeyList = append(pubKeyList, pubKey)
 	}
 	if err != nil {
@@ -1060,7 +1060,7 @@ func (r *NotaryRepository) pubKeyListForRotation(role data.RoleName, serverManag
 	if len(newKeys) > 0 {
 		pubKeyList = make(data.KeyList, 0, len(newKeys))
 		for _, keyID := range newKeys {
-			pubKey = r.CryptoService.GetKey(keyID)
+			pubKey = r.cryptoService.GetKey(keyID)
 			if pubKey == nil {
 				return nil, fmt.Errorf("unable to find key: %s")
 			}
@@ -1083,7 +1083,7 @@ func (r *NotaryRepository) pubKeysToCerts(role data.RoleName, pubKeyList data.Ke
 	}
 
 	for i, pubKey := range pubKeyList {
-		privKey, loadedRole, err := r.CryptoService.GetPrivateKey(pubKey.ID())
+		privKey, loadedRole, err := r.cryptoService.GetPrivateKey(pubKey.ID())
 		if err != nil {
 			return nil, err
 		}
@@ -1155,4 +1155,12 @@ func (r *NotaryRepository) DeleteTrustData(deleteRemote bool) error {
 		}
 	}
 	return nil
+}
+
+func (r *NotaryRepository) SetLegacyVersions(n int) {
+	r.legacyVersions = n
+}
+
+func (r *NotaryRepository) CryptoService() signed.CryptoService {
+	return r.cryptoService
 }

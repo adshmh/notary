@@ -3,6 +3,7 @@ package client
 import (
 	"github.com/docker/notary/client/changelist"
 	"github.com/docker/notary/tuf/data"
+	"github.com/docker/notary/tuf/signed"
 )
 
 // Repository represents the set of options that must be supported over a TUF repo.
@@ -39,4 +40,7 @@ type Repository interface {
 
 	// Key Operations
 	RotateKey(role data.RoleName, serverManagesKey bool, keyList []string) error
+
+	CryptoService() signed.CryptoService
+	SetLegacyVersions(int)
 }
